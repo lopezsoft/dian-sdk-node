@@ -5,6 +5,11 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [2.1.1] - 2026-03-25
+
+### Added
+- Archivo `LICENSE` con texto completo de la licencia MIT (Copyright 2026 Lewis Lopez Gomez)
+
 ## [2.1.0] - 2026-03-25
 
 ### Security
