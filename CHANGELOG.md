@@ -5,6 +5,11 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [2.1.2] - 2026-03-25
+
+### Removed
+- Eliminados todos los archivos PHP del proyecto original (`src/Client.php`, `src/Sign.php`, `src/BinarySecurityToken/`, `src/Templates/`, `src/Traits/`, `src/XAdES/`, `tests/*.php`) — el proyecto PHP de referencia se conserva localmente en `ubl21dian/` (excluido vía `.gitignore`)
+
 ## [2.1.1] - 2026-03-25
 
 ### Added
