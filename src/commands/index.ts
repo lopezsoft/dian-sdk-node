@@ -1,3 +1,4 @@
+export * from './BaseSoapCommand';
 export * from './SendBillSyncCommand';
 export * from './SendBillAsyncCommand';
 export * from './SendBillAttachmentAsyncCommand';

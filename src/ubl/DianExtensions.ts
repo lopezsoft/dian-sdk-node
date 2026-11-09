@@ -1,7 +1,11 @@
 import { createHash } from 'crypto';
-import { XMLSerializer, Document as XmlDocument } from '@xmldom/xmldom';
+import { DOMParser, XMLSerializer, Document as XmlDocument } from '@xmldom/xmldom';
 import { DocumentType, DOCUMENT_TYPE_CONFIG, detectDocumentType } from './models';
 import { QR_DOMAIN_HABILITACION, QR_DOMAIN_PRODUCCION } from '../common/constants';
+import { hexToDecimal } from '../common/utils';
+import type { IXmlSignOptions } from '../common/interfaces';
+
+export { hexToDecimal };
 
 /** Códigos de otros impuestos para cálculo ValOtroIm en QR de facturas. */
 const OTHER_TAX_CODES = [
@@ -15,11 +19,14 @@ const OTHER_TAX_CODES = [
 /**
  * Trunca (NO redondea) un valor numérico al número de decimales indicado.
  * Sigue la especificación DIAN para el truncamiento de valores monetarios
- * en los cálculos CUFE/CUDE/CUDS/CUNE.
+ * en los cálculos CUFE/CUDE/CUDS/CUNE (evita el error DIAN FAD06).
  *
- * Réplica fiel de `truncateDecimals()` de SignInvoice.php.
+ * Réplica fiel de `truncateDecimals()` de SignInvoice.php / DIANTrait.php.
  */
 export function truncateDecimals(value: number, decimals: number = 2): string {
+  if (Number.isNaN(value)) {
+    return '0.' + '0'.repeat(decimals);
+  }
   const stringValue = value.toFixed(6).replace(/0+$/, '').replace(/\.$/, '');
   const dotPos = stringValue.indexOf('.');
   if (dotPos === -1) {
@@ -78,27 +85,44 @@ function getTagTextOptional(doc: XmlDocument, tagName: string, fallback: string 
 }
 
 /**
- * Busca el monto de impuesto de un TaxTotal cuyo TaxScheme/ID coincida con `taxCode`.
+ * Obtiene únicamente los nodos `<cac:TaxTotal>` que son hijos directos de la raíz del documento,
+ * evitando capturar `<cac:TaxTotal>` internos de `<cac:InvoiceLine>` / `<cac:CreditNoteLine>`.
+ */
+function getRootTaxTotalElements(doc: XmlDocument): any[] {
+  const root = doc.documentElement;
+  if (root && root.childNodes) {
+    const directTaxTotals: any[] = [];
+    for (let i = 0; i < root.childNodes.length; i++) {
+      const child = root.childNodes.item(i);
+      if (child && (child.nodeName === 'cac:TaxTotal' || (child as any).localName === 'TaxTotal')) {
+        directTaxTotals.push(child);
+      }
+    }
+    if (directTaxTotals.length > 0) {
+      return directTaxTotals;
+    }
+  }
+
+  const allTaxTotals = doc.getElementsByTagName('cac:TaxTotal');
+  const fallbackList: any[] = [];
+  for (let i = 0; i < allTaxTotals.length; i++) {
+    const item = allTaxTotals.item(i);
+    if (item && (!root || item.parentNode === root)) {
+      fallbackList.push(item);
+    }
+  }
+  return fallbackList;
+}
+
+/**
+ * Busca el monto de impuesto de un TaxTotal a nivel raíz cuyo TaxScheme/ID coincida con `taxCode`,
+ * truncado a 2 decimales según especificación DIAN (v3.6.0–v3.6.5).
  * Retorna '0.00' si no se encuentra el código de impuesto.
- *
- * Estructura esperada en el XML:
- * ```xml
- * <cac:TaxTotal>
- *   <cbc:TaxAmount>1900.00</cbc:TaxAmount>
- *   <cac:TaxSubtotal>
- *     <cac:TaxCategory>
- *       <cac:TaxScheme>
- *         <cbc:ID>01</cbc:ID>
- *       </cac:TaxScheme>
- *     </cac:TaxCategory>
- *   </cac:TaxSubtotal>
- * </cac:TaxTotal>
- * ```
  */
 function getTaxAmount(doc: XmlDocument, taxCode: string): string {
-  const taxTotals = doc.getElementsByTagName('cac:TaxTotal');
+  const taxTotals = getRootTaxTotalElements(doc);
   for (let i = 0; i < taxTotals.length; i++) {
-    const taxTotal = taxTotals.item(i);
+    const taxTotal = taxTotals[i];
     if (!taxTotal) continue;
     const ids = (taxTotal as any).getElementsByTagName('cbc:ID');
     for (let j = 0; j < ids.length; j++) {
@@ -107,7 +131,8 @@ function getTaxAmount(doc: XmlDocument, taxCode: string): string {
       const parent = idNode.parentNode;
       if (parent && parent.nodeName === 'cac:TaxScheme' && (idNode.textContent || '').trim() === taxCode) {
         const taxAmounts = (taxTotal as any).getElementsByTagName('cbc:TaxAmount');
-        return taxAmounts.item(0)?.textContent?.trim() || '0.00';
+        const rawAmount = taxAmounts.item(0)?.textContent?.trim() || '0.00';
+        return truncateDecimals(parseFloat(rawAmount), 2);
       }
     }
   }
@@ -144,13 +169,15 @@ function getPartyIdentifications(doc: XmlDocument): { supplier: string; customer
 function getLineExtensionAmount(doc: XmlDocument, groupOfTotals: string): string {
   const totals = doc.getElementsByTagName(`cac:${groupOfTotals}`).item(0);
   if (!totals) throw new Error(`Grupo de totales no encontrado: cac:${groupOfTotals}`);
-  return (totals as any).getElementsByTagName('cbc:LineExtensionAmount').item(0)?.textContent?.trim() || '0.00';
+  const rawAmount = (totals as any).getElementsByTagName('cbc:LineExtensionAmount').item(0)?.textContent?.trim() || '0.00';
+  return truncateDecimals(parseFloat(rawAmount), 2);
 }
 
 function getPayableAmount(doc: XmlDocument, groupOfTotals: string): string {
   const totals = doc.getElementsByTagName(`cac:${groupOfTotals}`).item(0);
   if (!totals) throw new Error(`Grupo de totales no encontrado: cac:${groupOfTotals}`);
-  return (totals as any).getElementsByTagName('cbc:PayableAmount').item(0)?.textContent?.trim() || '0.00';
+  const rawAmount = (totals as any).getElementsByTagName('cbc:PayableAmount').item(0)?.textContent?.trim() || '0.00';
+  return truncateDecimals(parseFloat(rawAmount), 2);
 }
 
 /**
@@ -339,7 +366,8 @@ export function injectSoftwareSecurityCode(doc: XmlDocument, softwareID: string,
  *
  * Diferencias clave con CUFE/CUDE:
  * - Usa atributos XML en vez de nodos de texto (nómina DIAN).
- * - DevengadosTotal, DeduccionesTotal, ComprobanteTotal se truncan a 2 decimales.
+ * - DevengadosTotal, DeduccionesTotal, ComprobanteTotal se truncan a 2 decimales
+ *   y toman por defecto '0.00' en Nóminas de Ajuste de Eliminación (ubl21dian v3.5.1).
  *
  * Réplica de `getCUNE()` de SignPayroll.php.
  */
@@ -347,9 +375,9 @@ export function calculateCune(doc: XmlDocument, pin: string): string {
   const numero = getElementAttribute(doc, 'NumeroSecuenciaXML', 'Numero');
   const fechaGen = getElementAttribute(doc, 'InformacionGeneral', 'FechaGen');
   const horaGen = getElementAttribute(doc, 'InformacionGeneral', 'HoraGen');
-  const devengados = truncateDecimals(parseFloat(getTagText(doc, 'DevengadosTotal')), 2);
-  const deducciones = truncateDecimals(parseFloat(getTagText(doc, 'DeduccionesTotal')), 2);
-  const comprobante = truncateDecimals(parseFloat(getTagText(doc, 'ComprobanteTotal')), 2);
+  const devengados = truncateDecimals(parseFloat(getTagTextOptional(doc, 'DevengadosTotal', '0.00')), 2);
+  const deducciones = truncateDecimals(parseFloat(getTagTextOptional(doc, 'DeduccionesTotal', '0.00')), 2);
+  const comprobante = truncateDecimals(parseFloat(getTagTextOptional(doc, 'ComprobanteTotal', '0.00')), 2);
   const nit = getElementAttribute(doc, 'Empleador', 'NIT');
   const numDoc = getElementAttribute(doc, 'Trabajador', 'NumeroDocumento', '0');
   const tipoXML = getElementAttribute(doc, 'InformacionGeneral', 'TipoXML');
@@ -506,21 +534,6 @@ export function injectCudeEvent(doc: XmlDocument, pin: string): string {
 
 /**
  * Genera la cadena de datos QR para facturas/notas crédito/débito.
- * Formato DIAN:
- * ```
- * NumFac: {ID}
- * FecFac: {IssueDate}
- * HorFac: {IssueTime}
- * NitFac: {SupplierNIT}
- * DocAdq: {CustomerNIT}
- * ValFac: {LineExtensionAmount}
- * ValIva: {TaxAmount01}
- * ValOtroIm: {SumaOtrosImpuestos}
- * ValTolFac: {PayableAmount}
- * CUFE: {UUID}
- * {QRCodeURL}
- * ```
- *
  * Réplica de `getQRData()` de SignInvoice.php.
  */
 export function getQRDataInvoice(doc: XmlDocument, groupOfTotals: string = 'LegalMonetaryTotal'): string {
@@ -558,22 +571,36 @@ export function getQRDataInvoice(doc: XmlDocument, groupOfTotals: string = 'Lega
 }
 
 /**
+ * Genera la cadena de datos QR para Documento Soporte y Nota de Ajuste al Documento Soporte.
+ * Réplica de `getQRData()` de SignDocumentSupport.php (ubl21dian v3.6.1).
+ */
+export function getQRDataDocumentSupport(doc: XmlDocument, groupOfTotals: string = 'LegalMonetaryTotal'): string {
+  const basic = getBasicDocumentData(doc);
+  const parties = getPartyIdentifications(doc);
+  const lineExtension = getLineExtensionAmount(doc, groupOfTotals);
+  const payableAmount = getPayableAmount(doc, groupOfTotals);
+  const taxIva = getTaxAmount(doc, '01');
+  const uuid = getTagTextOptional(doc, 'cbc:UUID');
+  const qrCode = getTagTextOptional(doc, 'sts:QRCode')
+    || getTagTextOptional(doc, 'cbc:cbc:QRCode')
+    || getTagTextOptional(doc, 'cbc:QRCode');
+
+  return [
+    `NumDS: ${basic.id}`,
+    `FecFD: ${basic.date}`,
+    `HorDS: ${basic.time}`,
+    `NumSNO: ${parties.supplier}`,
+    `DocABS: ${parties.customer}`,
+    `ValDS: ${lineExtension}`,
+    `ValIva: ${taxIva}`,
+    `ValTolDS: ${payableAmount}`,
+    `CUDS: ${uuid}`,
+    qrCode,
+  ].join('\n');
+}
+
+/**
  * Genera la cadena de datos QR para nómina electrónica.
- * Formato DIAN:
- * ```
- * NumNIE: {NumeroSecuenciaXML/@Numero}
- * FecNIE: {InformacionGeneral/@FechaGen}
- * HorNIE: {InformacionGeneral/@HoraGen}
- * TipoNota: {TipoNota}        ← solo si existe
- * NitNIE: {Empleador/@NIT}
- * DocEmp: {Trabajador/@NumeroDocumento}
- * ValDev: {DevengadosTotal}
- * ValDed: {DeduccionesTotal}
- * ValTol: {ComprobanteTotal}
- * CUNE: {InformacionGeneral/@CUNE}
- * {CodigoQR}
- * ```
- *
  * Réplica de `getQRData()` de SignPayroll.php.
  */
 export function getQRDataPayroll(doc: XmlDocument): string {
@@ -582,9 +609,9 @@ export function getQRDataPayroll(doc: XmlDocument): string {
   const horaGen = getElementAttribute(doc, 'InformacionGeneral', 'HoraGen');
   const nit = getElementAttribute(doc, 'Empleador', 'NIT');
   const numDoc = getElementAttribute(doc, 'Trabajador', 'NumeroDocumento', '0');
-  const devengados = truncateDecimals(parseFloat(getTagText(doc, 'DevengadosTotal')), 2);
-  const deducciones = truncateDecimals(parseFloat(getTagText(doc, 'DeduccionesTotal')), 2);
-  const comprobante = truncateDecimals(parseFloat(getTagText(doc, 'ComprobanteTotal')), 2);
+  const devengados = truncateDecimals(parseFloat(getTagTextOptional(doc, 'DevengadosTotal', '0.00')), 2);
+  const deducciones = truncateDecimals(parseFloat(getTagTextOptional(doc, 'DeduccionesTotal', '0.00')), 2);
+  const comprobante = truncateDecimals(parseFloat(getTagTextOptional(doc, 'ComprobanteTotal', '0.00')), 2);
   const cune = getElementAttribute(doc, 'InformacionGeneral', 'CUNE', '');
   const codigoQR = getTagTextOptional(doc, 'CodigoQR');
 
@@ -613,4 +640,71 @@ export function getQRDataPayroll(doc: XmlDocument): string {
   );
 
   return lines.join('\n');
+}
+
+// ---------------------------------------------------------------------------
+// Orquestador opcional de pre-procesamiento UBL antes de firma XAdES
+// ---------------------------------------------------------------------------
+
+/**
+ * Aplica de forma opcional la inyección de `SoftwareSecurityCode` (`SoftwareSC`),
+ * `UUID` (`CUFE`/`CUDE`/`CUDS`/`CUNE`) y `QRCode` sobre un XML antes de firmarlo.
+ * Si no se proveen credenciales (`softwareID`, `pin`, `technicalKey`), retorna el XML intacto.
+ */
+export function applyPreSignUblExtensions(xml: string, options?: IXmlSignOptions): string {
+  if (!options || (!options.softwareID && !options.pin && !options.technicalKey)) {
+    return xml;
+  }
+
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const rootName = doc.documentElement?.localName || doc.documentElement?.nodeName || '';
+
+  // Caso 1: Nómina Individual o Nómina de Ajuste
+  if (
+    rootName.includes('NominaIndividual') ||
+    options.documentType === DocumentType.Payroll ||
+    options.documentType === DocumentType.PayrollAdjustment
+  ) {
+    if (options.softwareID && options.pin) {
+      injectPayrollSoftwareSecurityCode(doc, options.softwareID, options.pin);
+    }
+    if (options.pin) {
+      injectCune(doc, options.pin);
+    }
+    return new XMLSerializer().serializeToString(doc as any);
+  }
+
+  // Caso 2: ApplicationResponse (Eventos RADIAN)
+  const detectedType = options.documentType ?? detectDocumentType(xml);
+  if (detectedType === DocumentType.ApplicationResponse) {
+    if (options.softwareID && options.pin) {
+      injectSoftwareSecurityCode(doc, options.softwareID, options.pin);
+    }
+    if (options.pin) {
+      injectCudeEvent(doc, options.pin);
+    }
+    return new XMLSerializer().serializeToString(doc as any);
+  }
+
+  // Caso 3: AttachedDocument (no recalcula UUID propio)
+  if (detectedType === DocumentType.AttachedDocument) {
+    if (options.softwareID && options.pin) {
+      injectSoftwareSecurityCode(doc, options.softwareID, options.pin);
+    }
+    return new XMLSerializer().serializeToString(doc as any);
+  }
+
+  // Caso 4: Factura, Nota Crédito, Nota Débito, Documento Soporte, Nota de Ajuste
+  if (options.softwareID && options.pin) {
+    injectSoftwareSecurityCode(doc, options.softwareID, options.pin);
+  }
+  if (options.technicalKey || options.pin) {
+    injectUuid(doc, {
+      technicalKey: options.technicalKey,
+      pin: options.pin,
+      documentType: detectedType,
+    });
+  }
+
+  return new XMLSerializer().serializeToString(doc as any);
 }

@@ -25,20 +25,18 @@ export class SoapClient implements IHttpClient {
 
 	/**
 	 * Realiza una petición POST al endpoint de la DIAN.
-	 * @param _ La URL no se usa directamente, se obtiene del entorno.
 	 * @param data El cuerpo del mensaje SOAP.
 	 * @param headers Los encabezados adicionales para la petición.
 	 * @returns Una promesa que se resuelve con la respuesta del servicio.
 	 */
 	public async post(data: string, headers: { [key: string]: string }): Promise<any> {
-		const url = DianEndpoints[this.environment];
+		// Fallback seguro al endpoint de producción (DianEndpoints[1]) si el ambiente no existe (ubl21dian v3.6.8)
+		const url = DianEndpoints[this.environment] || DianEndpoints[1];
 		try {
-			let xmlSinEspacios = data.replace(/[\n\t\r]/g, '');
-			xmlSinEspacios = xmlSinEspacios.replace(/>\s+</g, '><').trim();
-			// fs.writeFileSync('request.xml', xmlSinEspacios, 'utf8'); // Guardar el XML para depuración
-			headers['Content-Length'] = Buffer.byteLength(xmlSinEspacios).toString();
-			// Realiza la petición POST usando axios
-			const response = await this.client.post(url, xmlSinEspacios, { headers });
+			let compactXml = data.replace(/[\n\t\r]/g, '');
+			compactXml = compactXml.replace(/>\s+</g, '><').trim();
+			headers['Content-Length'] = Buffer.byteLength(compactXml).toString();
+			const response = await this.client.post(url, compactXml, { headers });
 			return response.data;
 		} catch (error) {
 			this.handleHttpError(error as AxiosError);
@@ -52,8 +50,10 @@ export class SoapClient implements IHttpClient {
 	 */
 	private handleHttpError(error: AxiosError): void {
 		if (error.code === 'ECONNABORTED') {
-			throw new Error('Error 504: Gateway Timeout. La conexión con la DIAN está tardando más de lo esperado. Por favor, ' +
-				'intente nuevamente. Si el problema persiste, contacte a soporte técnico.');
+			throw new Error(
+				'Error 504: Gateway Timeout. La conexión con la DIAN está tardando más de lo esperado. Por favor, ' +
+				'intente nuevamente. Si el problema persiste, contacte a soporte técnico.',
+			);
 		}
 
 		const status = error.response?.status;

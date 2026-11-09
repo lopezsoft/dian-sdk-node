@@ -5,6 +5,43 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [2.2.0] - 2026-11-08
+
+### Added
+- **Paridad criptográfica XAdES-EPES completa con `ubl21dian` v3.6.9 (`BaseXmlSigner`)**:
+  - Inclusión de las 3 referencias obligatorias XAdES-EPES en `<ds:SignedInfo>` (`URI=""` para el documento raíz con transformación `enveloped-signature`, `URI="#...-keyinfo"` para `<ds:KeyInfo>` y `URI="#...-signedprops"` con `Type="http://uri.etsi.org/01903#SignedProperties"`).
+  - Propagación de los namespaces del tipo de documento (`DOCUMENT_TYPE_CONFIG[type].ns`) hacia `<ds:KeyInfo>`, `<xades:SignedProperties>` y `<ds:SignedInfo>` antes de canonicalizar con C14N (`http://www.w3.org/TR/2001/REC-xml-c14n-20010315`).
+  - Inclusión de `<xades:SignerRole><xades:ClaimedRoles><xades:ClaimedRole>supplier</xades:ClaimedRole></xades:ClaimedRoles></xades:SignerRole>`.
+  - Conversión de precisión arbitraria hexadecimal a decimal mediante `hexToDecimal()` (`BigInt`) para `<ds:X509SerialNumber>`, soportando seriales de 16 a 20+ bytes (128–160 bits) de FIMA Digital, Viafirma, GSE y Andes SCD (`ubl21dian` v3.6.9).
+  - Formateo de `<xades:SigningTime>` en zona horaria de Colombia (`America/Bogota`, `-05:00`) mediante `formatColombiaSigningTime()` (`ubl21dian` v3.2.11).
+- **Arquitectura SOLID y Patrones de Diseño**:
+  - `BaseSoapCommand` — Clase base abstracta (Patrón Template Method + Command) que centraliza la resolución de endpoints DIAN (con fallback seguro a producción `DianEndpoints[1]`, `ubl21dian` v3.6.8), firma WS-Security, envío HTTP y extracción de respuesta.
+  - `XmlSignerFactory` — Fábrica desacoplada (Patrón Factory + Open/Closed Principle) para instanciar el firmante especializado según `DocumentType` o auto-detección XML.
+  - Soporte de **flujo dual** en todos los comandos de envío (`SendBillSyncCommand`, `SendBillAsyncCommand`, `SendBillAttachmentAsyncCommand`, `SendEventCommand`, `SendNominaSyncCommand`): firma al vuelo (`unsigned*Xml`) o envío directo de contenido pre-firmado / ZIP en base64 (`contentFile`).
+  - Segregación de interfaces (`ISoapSigner`, `IXmlSigner`, `IXmlSignerFactory`, `IXmlSignOptions`) e Inyección de Dependencias en `DianClient`.
+- **Nuevas funciones en `DianExtensions`**:
+  - `getQRDataDocumentSupport()` — Generación de cadena QR para Documento Soporte y Nota de Ajuste (`ubl21dian` v3.6.1).
+  - `applyPreSignUblExtensions()` — Inyección opcional pre-firma de `SoftwareSecurityCode` (`SoftwareSC`), `CUFE`/`CUDE`/`CUDS`/`CUNE` y `QRCode`.
+  - Soporte para Nómina de Ajuste de Eliminación sin nodos `DevengadosTotal`, `DeduccionesTotal` ni `ComprobanteTotal` (`ubl21dian` v3.5.1).
+
+### Fixed
+- **Prevención de Error DIAN `FAD06` (`DianExtensions`)**:
+  - Aplicación de `truncateDecimals(..., 2)` sobre `LineExtensionAmount`, `TaxAmount` y `PayableAmount` en el cálculo de `CUFE`, `CUDE` y `CUDS` (`ubl21dian` v3.6.0–v3.6.5).
+  - Filtrado de `<cac:TaxTotal>` exclusivamente a nivel raíz del documento para ignorar impuestos de línea en `<cac:InvoiceLine>`.
+- **`BaseXmlSigner` — Eliminación de doble firmado legacy y corrección de `CertDigest`**:
+  - Cálculo de `<xades:CertDigest>` sobre los bytes DER del certificado X.509 completo en lugar de la llave pública.
+  - Ejecución de la firma XAdES-EPES en una sola pasada DOM sin doble firmado RSA.
+  - Resolución dinámica de `ExtensionContent` para `AttachedDocument` (índice `0`), Sector Salud / Minsalud (`CustomTagGeneral`, índice `2`) y Nómina con 1 o 2 extensiones.
+- **`SoapSigner` — Canonicalización Exclusiva e IDs por petición**:
+  - Inclusión de `{ inclusiveNamespacesPrefixList: 'wsa soap wcf' }` al canonicalizar `<ds:SignedInfo>` en `createSignature()`.
+  - Regeneración limpia de identificadores `wsu:Id` / `Id` en cada invocación de `sign()`.
+- **`Certificate` — Soporte PKCS#12 extendido**:
+  - Extracción de llaves privadas tanto desde `pkcs8ShroudedKeyBag` como `keyBag` y detección normalizada de errores MAC / contraseña inválida en `node-forge`.
+
+### Removed
+- Archivo vacío residual `src/soap/SoapMessage.ts`.
+- Funciones legacy sin uso `getDomTag`, `getDomQuery` y `x509Export` en `src/common/utils.ts`.
+
 ## [2.1.2] - 2026-03-25
 
 ### Removed

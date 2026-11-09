@@ -1,11 +1,32 @@
 import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import * as crypto from 'crypto';
 import { ExclusiveCanonicalization } from 'xml-crypto';
-import { ICertificateData, ISigner } from '../common/interfaces';
-import { ADDRESSING, BASE64BINARY, DIAN_COLOMBIA, EXC_C14N, RSA_SHA256, SHA256, SOAP_ENVELOPE, WSS_WSSECURITY, WSS_WSSECURITY_UTILITY, X509V3, XMLDSIG } from '../common/constants';
-import { removeDomChild } from "../common/utils";
+import { ICertificateData, ISoapSigner } from '../common/interfaces';
+import {
+	ADDRESSING,
+	BASE64BINARY,
+	DIAN_COLOMBIA,
+	EXC_C14N,
+	RSA_SHA256,
+	SHA256,
+	SOAP_ENVELOPE,
+	WSS_WSSECURITY,
+	WSS_WSSECURITY_UTILITY,
+	X509V3,
+	XMLDSIG,
+} from '../common/constants';
+import { removeDomChild } from '../common/utils';
 
-export class SoapSigner implements ISigner {
+export class SoapSigner implements ISoapSigner {
+	private static readonly ID_PREFIXES = {
+		wsuBinarySecurityTokenID: 'X509',
+		securityTokenReferenceID: 'STR',
+		signatureID: 'SIG',
+		timestampID: 'TS',
+		keyInfoID: 'KI',
+		wsuIDTo: 'id',
+	} as const;
+
 	private readonly ADDRESSING = ADDRESSING;
 	private readonly SOAP_ENVELOPE = SOAP_ENVELOPE;
 	private readonly DIAN_COLOMBIA = DIAN_COLOMBIA;
@@ -35,28 +56,27 @@ export class SoapSigner implements ISigner {
 	private signature: any;
 	private signatureValue: any;
 
-	private certs: { pkey: string, x509CertificateBase64: string } = { pkey: '', x509CertificateBase64: '' };
+	private certs: { pkey: string; x509CertificateBase64: string } = { pkey: '', x509CertificateBase64: '' };
 
 	constructor() {
 		this.generateUniqueIds();
 	}
 
 	private generateUniqueIds(): void {
-		const idsMap = this.ids as any;
-		for (const key in idsMap) {
-			if (Object.prototype.hasOwnProperty.call(idsMap, key)) {
-				const uniqueId = crypto.createHash('sha1').update(crypto.randomBytes(16)).digest('hex').toUpperCase();
-				(this.ids as any)[key] = `${idsMap[key]}-${uniqueId}`;
-			}
+		const prefixes = SoapSigner.ID_PREFIXES;
+		for (const key of Object.keys(prefixes) as Array<keyof typeof prefixes>) {
+			const uniqueId = crypto.createHash('sha1').update(crypto.randomBytes(16)).digest('hex').toUpperCase();
+			this.ids[key] = `${prefixes[key]}-${uniqueId}`;
 		}
 	}
 
 	public sign(unsignedSoap: string | any, certificateData: ICertificateData, action: string, toValue: string): string {
+		this.generateUniqueIds();
 		this.certs.pkey = certificateData.privateKeyPem;
 		this.certs.x509CertificateBase64 = certificateData.x509CertificateBase64;
 		const parser = new DOMParser();
 		const serializer = new XMLSerializer();
-		const CurrentTime = Math.floor(Date.now() / 1000);
+		const currentTime = Math.floor(Date.now() / 1000);
 
 		if (unsignedSoap instanceof Object) {
 			unsignedSoap = serializer.serializeToString(unsignedSoap);
@@ -89,13 +109,13 @@ export class SoapSigner implements ISigner {
 		timestamp.setAttribute('wsu:Id', this.ids.timestampID);
 		security.appendChild(timestamp);
 
-		const createdTime = new Date(CurrentTime * 1000).toISOString();
+		const createdTime = new Date(currentTime * 1000).toISOString();
 		const created = this.domDocument.createElement('wsu:Created');
 		created.textContent = createdTime;
 		timestamp.appendChild(created);
 
 		const timeToLive = 60000;
-		const expireTime = new Date((CurrentTime + timeToLive) * 1000).toISOString();
+		const expireTime = new Date((currentTime + timeToLive) * 1000).toISOString();
 		const expire = this.domDocument.createElement('wsu:Expires');
 		expire.textContent = expireTime;
 		timestamp.appendChild(expire);
@@ -192,7 +212,7 @@ export class SoapSigner implements ISigner {
 
 		// 4. Canonicalizamos y generamos el hash.
 		const options: any = {
-			inclusiveNamespacesPrefixList: 'soap wcf'
+			inclusiveNamespacesPrefixList: 'soap wcf',
 		};
 		const c14n = new ExclusiveCanonicalization();
 		const canonicalizedXml = c14n.process(tempDoc.documentElement as any, options);
@@ -208,10 +228,9 @@ export class SoapSigner implements ISigner {
 		return digestValue;
 	}
 
-
 	/**
-	 * @description Crea la firma digital, replicando la C14N de PHP que
-	 * inyecta los namespaces directamente en el nodo SignedInfo.
+	 * @description Crea la firma digital, replicando la Exclusive C14N de PHP que
+	 * conserva los prefijos inclusivos 'wsa soap wcf' en el nodo SignedInfo.
 	 */
 	public createSignature(): string {
 		const serializer = new XMLSerializer();
@@ -232,9 +251,12 @@ export class SoapSigner implements ISigner {
 		// 4. Parseamos este string modificado en un documento temporal.
 		const tempDoc = parser.parseFromString(modifiedSignedInfoString, 'text/xml');
 
-		// 5. Canonicalizamos el documento temporal. Esta es la data que se firmará.
+		// 5. Canonicalizamos el documento temporal respetando PrefixList="wsa soap wcf".
+		const options: any = {
+			inclusiveNamespacesPrefixList: 'wsa soap wcf',
+		};
 		const c14n = new ExclusiveCanonicalization();
-		const canonicalizedXml = c14n.process(tempDoc.documentElement as any, {});
+		const canonicalizedXml = c14n.process(tempDoc.documentElement as any, options);
 
 		// 6. Creamos la firma.
 		const signer = crypto.createSign('RSA-SHA256');
@@ -250,6 +272,5 @@ export class SoapSigner implements ISigner {
 		} catch (error) {
 			throw new Error('La firma digital SOAP no pudo ser generada.');
 		}
-
 	}
 }

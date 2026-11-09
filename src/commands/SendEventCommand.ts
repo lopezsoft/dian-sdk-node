@@ -1,26 +1,41 @@
-import { ICommand, ICommandServices, ISendEventParams } from '../common/interfaces';
+import {
+	ICommandServices,
+	ISendEventParams,
+	ISoapTemplate,
+	ITemplateParams,
+} from '../common/interfaces';
 import { SendEventTemplate } from '../soap/templates/SendEventTemplate';
-import { fastXmlParser } from '../common/utils';
-import { DianEndpoints } from '../config/dianEndpoints';
 import { SEND_EVENT_UPDATE_STATUS_ACTION } from '../common/constants';
+import { BaseSoapCommand } from './BaseSoapCommand';
 
 /**
  * Comando para ejecutar la operación SendEventUpdateStatus de la DIAN.
+ * Soporta tanto la firma al vuelo de `unsignedEventXml` como el envío directo de `contentFile` (base64).
  */
-export class SendEventCommand implements ICommand<ISendEventParams, any> {
-	public async execute(services: ICommandServices, params: ISendEventParams): Promise<any> {
-		const action = SEND_EVENT_UPDATE_STATUS_ACTION;
-		const url = DianEndpoints[services.environment];
-		const signedEventXml = services.xmlSigner.sign(params.unsignedEventXml, services.certificateData, action, url);
-		const contentFileBase64 = Buffer.from(signedEventXml).toString('base64');
+export class SendEventCommand extends BaseSoapCommand<ISendEventParams, any> {
+	protected readonly action = SEND_EVENT_UPDATE_STATUS_ACTION;
+	protected readonly operationName = 'SendEventUpdateStatus';
 
-		const template = new SendEventTemplate();
-		const unsignedSoap = template.getXml({ contentFile: contentFileBase64 });
-		const signedSoap = services.soapSigner.sign(unsignedSoap, services.certificateData, action, url);
+	protected createTemplate(): ISoapTemplate {
+		return new SendEventTemplate();
+	}
 
-		const responseXml = await services.soapClient.post(signedSoap, { action });
+	protected override buildTemplateParams(
+		services: ICommandServices,
+		params: ISendEventParams,
+		endpointUrl: string,
+	): ITemplateParams {
+		const contentFile = this.resolveDocumentContentBase64({
+			contentFile: params.contentFile,
+			unsignedXml: params.unsignedEventXml,
+			signingOptions: params.signingOptions,
+			signer: services.xmlSigner,
+			services,
+			endpointUrl,
+		});
 
-		const parsedResponse = fastXmlParser.parse(responseXml);
-		return parsedResponse?.['Envelope']?.['Body']?.['SendEventUpdateStatusResponse']?.['SendEventUpdateStatusResult'];
+		return {
+			contentFile,
+		};
 	}
 }

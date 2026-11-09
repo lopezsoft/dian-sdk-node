@@ -1,30 +1,42 @@
-import { ICommand, ICommandServices, ISendBillSyncParams } from '../common/interfaces';
+import {
+	ICommandServices,
+	ISendBillSyncParams,
+	ISoapTemplate,
+	ITemplateParams,
+} from '../common/interfaces';
 import { SendBillSyncTemplate } from '../soap/templates/SendBillSyncTemplate';
-import { fastXmlParser } from '../common/utils';
-import { DianEndpoints } from '../config/dianEndpoints';
 import { SEND_BILL_SYNC_ACTION } from '../common/constants';
+import { BaseSoapCommand } from './BaseSoapCommand';
 
 /**
  * Comando para ejecutar la operación SendBillSync de la DIAN.
+ * Soporta tanto la firma al vuelo de `unsignedUblXml` como el envío directo de `contentFile` (base64).
  */
-export class SendBillSyncCommand implements ICommand<ISendBillSyncParams, any> {
-	public async execute(services: ICommandServices, params: ISendBillSyncParams): Promise<any> {
-		const action = SEND_BILL_SYNC_ACTION;
-		const url = DianEndpoints[services.environment];
-		const signedUblXml = services.xmlSigner.sign(params.unsignedUblXml, services.certificateData, action, url);
-		const contentFileBase64 = Buffer.from(signedUblXml).toString('base64');
+export class SendBillSyncCommand extends BaseSoapCommand<ISendBillSyncParams, any> {
+	protected readonly action = SEND_BILL_SYNC_ACTION;
+	protected readonly operationName = 'SendBillSync';
 
-		const template = new SendBillSyncTemplate();
-		const unsignedSoap = template.getXml({
-			fileName: params.fileName,
-			contentFile: contentFileBase64,
+	protected createTemplate(): ISoapTemplate {
+		return new SendBillSyncTemplate();
+	}
+
+	protected override buildTemplateParams(
+		services: ICommandServices,
+		params: ISendBillSyncParams,
+		endpointUrl: string,
+	): ITemplateParams {
+		const contentFile = this.resolveDocumentContentBase64({
+			contentFile: params.contentFile,
+			unsignedXml: params.unsignedUblXml,
+			signingOptions: params.signingOptions,
+			signer: services.xmlSigner,
+			services,
+			endpointUrl,
 		});
 
-		const signedSoap = services.soapSigner.sign(unsignedSoap, services.certificateData, action, url);
-
-		const responseXml = await services.soapClient.post(signedSoap, { action });
-
-		const parsedResponse = fastXmlParser.parse(responseXml);
-		return parsedResponse?.['Envelope']?.['Body']?.['SendBillSyncResponse']?.['SendBillSyncResult'];
+		return {
+			fileName: params.fileName,
+			contentFile,
+		};
 	}
 }

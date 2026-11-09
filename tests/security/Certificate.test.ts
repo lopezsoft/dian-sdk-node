@@ -1,21 +1,46 @@
+import * as forge from 'node-forge';
 import { Certificate } from '../../src/security/Certificate';
-import * as fs from 'fs';
-import * as path from 'path';
 
-const TEST_CERT_PATH = path.join(__dirname, '../certs/certificado_prueba.p12');
 const TEST_CERT_PASSWORD = 'tu_password_de_prueba';
 
+/**
+ * Genera un contenedor PKCS#12 (.p12) válido en memoria para pruebas unitarias.
+ */
+function generateTestP12Buffer(password: string): Buffer {
+	const keys = forge.pki.rsa.generateKeyPair(2048);
+	const cert = forge.pki.createCertificate();
+	cert.publicKey = keys.publicKey;
+	cert.serialNumber = '78a5d8e5c5f9b4a02145b789a0c3d4e5';
+	cert.validity.notBefore = new Date();
+	cert.validity.notAfter = new Date();
+	cert.validity.notAfter.setFullYear(cert.validity.notAfter.getFullYear() + 1);
+
+	const attrs = [
+		{ shortName: 'CN', value: 'Test DIAN P12' },
+		{ shortName: 'O', value: 'LopezSoft' },
+		{ shortName: 'C', value: 'CO' },
+	];
+	cert.setSubject(attrs);
+	cert.setIssuer(attrs);
+	cert.sign(keys.privateKey, forge.md.sha256.create());
+
+	const p12Asn1 = forge.pkcs12.toPkcs12Asn1(keys.privateKey, [cert], password, {
+		algorithm: '3des',
+	});
+	const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
+	return Buffer.from(p12Der, 'binary');
+}
+
 describe('Certificate', () => {
-	const certFileExists = fs.existsSync(TEST_CERT_PATH);
+	let validP12Buffer: Buffer;
+
+	beforeAll(() => {
+		validP12Buffer = generateTestP12Buffer(TEST_CERT_PASSWORD);
+	});
 
 	it('debería cargar y parsear un certificado .p12 correctamente', async () => {
-		if (!certFileExists) {
-			console.warn(`Certificado de prueba no encontrado en: ${TEST_CERT_PATH}. Test omitido.`);
-			return;
-		}
-
 		const certificate = new Certificate();
-		const certData = await certificate.loadFromFile(TEST_CERT_PATH, TEST_CERT_PASSWORD);
+		const certData = await certificate.loadFromBuffer(validP12Buffer, TEST_CERT_PASSWORD);
 
 		expect(certData).toBeDefined();
 		expect(certData.privateKeyPem).toContain('-----BEGIN');
@@ -24,13 +49,8 @@ describe('Certificate', () => {
 	});
 
 	it('debería lanzar un error si la contraseña es incorrecta', async () => {
-		if (!certFileExists) {
-			console.warn(`Certificado de prueba no encontrado en: ${TEST_CERT_PATH}. Test omitido.`);
-			return;
-		}
-
 		const certificate = new Certificate();
-		await expect(certificate.loadFromFile(TEST_CERT_PATH, 'password_incorrecto'))
+		await expect(certificate.loadFromBuffer(validP12Buffer, 'password_incorrecto'))
 			.rejects.toThrow('La contraseña del certificado es incorrecta');
 	});
 

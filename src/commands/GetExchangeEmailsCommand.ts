@@ -1,25 +1,16 @@
-import { ICommand, ICommandServices, IGetExchangeEmailsParams } from '../common/interfaces';
+import { IGetExchangeEmailsParams, ISoapTemplate } from '../common/interfaces';
 import { GetExchangeEmailsTemplate } from '../soap/templates/GetExchangeEmailsTemplate';
-import { fastXmlParser } from '../common/utils';
 import { GET_EXCHANGE_EMAILS_ACTION } from '../common/constants';
-import { DianEndpoints } from '../config/dianEndpoints';
+import { BaseSoapCommand } from './BaseSoapCommand';
 
 /**
  * Comando para ejecutar la operación GetExchangeEmails de la DIAN.
  */
-export class GetExchangeEmailsCommand implements ICommand<IGetExchangeEmailsParams, any> {
-	public async execute(services: ICommandServices, _params: IGetExchangeEmailsParams): Promise<any> {
-		const template = new GetExchangeEmailsTemplate();
-		const unsignedSoap = template.getXml();
-		const action = GET_EXCHANGE_EMAILS_ACTION;
-		const url = DianEndpoints[services.environment];
-		const signedSoap = services.soapSigner.sign(unsignedSoap, services.certificateData, action, url);
+export class GetExchangeEmailsCommand extends BaseSoapCommand<IGetExchangeEmailsParams, any> {
+	protected readonly action = GET_EXCHANGE_EMAILS_ACTION;
+	protected readonly operationName = 'GetExchangeEmails';
 
-		const responseXml = await services.soapClient.post(signedSoap, {
-			action: action
-		});
-
-		const parsedResponse = fastXmlParser.parse(responseXml);
-		return parsedResponse?.['Envelope']?.['Body']?.['GetExchangeEmailsResponse']?.['GetExchangeEmailsResult'];
+	protected createTemplate(): ISoapTemplate {
+		return new GetExchangeEmailsTemplate();
 	}
 }

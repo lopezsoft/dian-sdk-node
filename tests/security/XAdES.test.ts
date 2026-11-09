@@ -353,3 +353,66 @@ describe('BaseXmlSigner — Consistencia de firma', () => {
     expect(sp1.getAttribute('Id')).not.toBe(sp2.getAttribute('Id'));
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Tests — Paridad XAdES-EPES (ubl21dian v3.6.9) y XmlSignerFactory
+// ---------------------------------------------------------------------------
+
+describe('BaseXmlSigner — Paridad XAdES-EPES completa (ubl21dian v3.6.9)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { XmlSignerFactory } = require('../../src/security/XmlSignerFactory');
+
+  let signedXml: string;
+  let signedDoc: any;
+
+  beforeAll(() => {
+    const signer = new XmlSigner();
+    signedXml = signer.sign(INVOICE_XML, certData, ACTION, TO);
+    signedDoc = new DOMParser().parseFromString(signedXml, 'text/xml');
+  });
+
+  it('debería incluir las 3 referencias obligatorias XAdES-EPES en ds:SignedInfo (documento, KeyInfo y SignedProperties)', () => {
+    const signedInfo = signedDoc.getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'SignedInfo').item(0);
+    const references = signedInfo.getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'Reference');
+    expect(references.length).toBe(3);
+
+    const ref0Uri = references.item(0).getAttribute('URI');
+    const ref1Uri = references.item(1).getAttribute('URI');
+    const ref2Uri = references.item(2).getAttribute('URI');
+    const ref2Type = references.item(2).getAttribute('Type');
+
+    expect(ref0Uri).toBe('');
+    expect(ref1Uri).toMatch(/^#xmldsig-.*-keyinfo$/);
+    expect(ref2Uri).toMatch(/^#xmldsig-.*-signedprops$/);
+    expect(ref2Type).toBe('http://uri.etsi.org/01903#SignedProperties');
+  });
+
+  it('debería incluir xades:SignerRole con ClaimedRole supplier', () => {
+    const claimedRoles = signedDoc.getElementsByTagNameNS('http://uri.etsi.org/01903/v1.3.2#', 'ClaimedRole');
+    expect(claimedRoles.length).toBe(1);
+    expect(claimedRoles.item(0).textContent).toBe('supplier');
+  });
+
+  it('debería formatear ds:X509SerialNumber como entero decimal (no hexadecimal)', () => {
+    const serialNode = signedDoc.getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'X509SerialNumber').item(0);
+    expect(serialNode.textContent).toMatch(/^\d+$/);
+  });
+
+  it('debería formatear xades:SigningTime con zona horaria de Colombia (-05:00)', () => {
+    const signingTimeNode = signedDoc.getElementsByTagNameNS('http://uri.etsi.org/01903/v1.3.2#', 'SigningTime').item(0);
+    expect(signingTimeNode.textContent).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}-05:00$/);
+  });
+
+  it('XmlSignerFactory debería instanciar el firmante especializado para cada DocumentType', () => {
+    const factory = new XmlSignerFactory();
+    expect(factory.createForXml(INVOICE_XML).getDocumentConfig()?.type).toBe(DocumentType.Invoice);
+    expect(factory.createForXml(CREDIT_NOTE_XML).getDocumentConfig()?.type).toBe(DocumentType.CreditNote);
+    expect(factory.createForXml(ATTACHED_DOC_XML).getDocumentConfig()?.type).toBe(DocumentType.AttachedDocument);
+    expect(factory.createForXml(PAYROLL_XML).getDocumentConfig()?.type).toBe(DocumentType.Payroll);
+    expect(factory.createForDocumentType(DocumentType.DocumentSupport).getDocumentConfig()?.type)
+      .toBe(DocumentType.DocumentSupport);
+    expect(factory.createForDocumentType(DocumentType.AdjustmentNote).getDocumentConfig()?.type)
+      .toBe(DocumentType.AdjustmentNote);
+  });
+});

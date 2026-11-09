@@ -406,3 +406,47 @@ describe('Comandos — patrones comunes', () => {
     );
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Tests — Flujo Dual (contentFile pre-firmado / ZIP en base64 sin re-firmar UBL)
+// ---------------------------------------------------------------------------
+
+describe('Comandos de envío — Flujo pre-firmado con contentFile (base64)', () => {
+  it('SendBillSyncCommand debería aceptar contentFile pre-firmado sin invocar xmlSigner', async () => {
+    const responseXml = buildSoapResponse('SendBillSync', '<IsValid>true</IsValid>');
+    const { services, mocks } = createMockServices(responseXml);
+    const preSignedBase64 = Buffer.from('<SignedInvoice/>').toString('base64');
+
+    await new SendBillSyncCommand().execute(services, {
+      fileName: 'pre_signed.xml',
+      contentFile: preSignedBase64,
+    });
+
+    expect(mocks.xmlSign).not.toHaveBeenCalled();
+    expect(mocks.soapSign).toHaveBeenCalledTimes(1);
+    expect(mocks.soapSign.mock.calls[0][0]).toContain(preSignedBase64);
+  });
+
+  it('SendBillAsyncCommand, SendBillAttachmentAsyncCommand, SendEventCommand y SendNominaSyncCommand deberían aceptar contentFile directamente', async () => {
+    const preSignedBase64 = Buffer.from('ZIP_OR_SIGNED_XML').toString('base64');
+
+    const cases = [
+      { cmd: new SendBillAsyncCommand(), params: { fileName: 'a.zip', contentFile: preSignedBase64 } },
+      { cmd: new SendBillAttachmentAsyncCommand(), params: { fileName: 'att.xml', contentFile: preSignedBase64 } },
+      { cmd: new SendEventCommand(), params: { contentFile: preSignedBase64 } },
+      { cmd: new SendNominaSyncCommand(), params: { contentFile: preSignedBase64 } },
+    ];
+
+    for (const { cmd, params } of cases) {
+      const responseXml = buildSoapResponse('SendBillSync', '<OK/>');
+      const { services, mocks } = createMockServices(responseXml);
+      await cmd.execute(services, params as any);
+
+      expect(mocks.xmlSign).not.toHaveBeenCalled();
+      expect(mocks.payrollSign).not.toHaveBeenCalled();
+      expect(mocks.soapSign).toHaveBeenCalledTimes(1);
+      expect(mocks.soapSign.mock.calls[0][0]).toContain(preSignedBase64);
+    }
+  });
+});

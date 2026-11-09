@@ -1,25 +1,16 @@
-import {ICommand, ICommandServices, IGetAcquirerParams} from '../common/interfaces';
+import { IGetAcquirerParams, ISoapTemplate } from '../common/interfaces';
 import { GetAcquirerTemplate } from '../soap/templates/GetAcquirerTemplate';
-import { fastXmlParser } from '../common/utils';
-import {DianEndpoints} from "../config/dianEndpoints";
-import {GET_ACQUIRER_ACTION} from "../common/constants";
+import { GET_ACQUIRER_ACTION } from '../common/constants';
+import { BaseSoapCommand } from './BaseSoapCommand';
 
 /**
  * Comando para ejecutar la operación GetAcquirer de la DIAN.
  */
-export class GetAcquirerCommand implements ICommand<IGetAcquirerParams, any> {
-	public async execute(services: ICommandServices, params: IGetAcquirerParams): Promise<any> {
-		const template = new GetAcquirerTemplate();
-		const unsignedSoap = template.getXml(params);
-		const action = GET_ACQUIRER_ACTION;
-		const url = DianEndpoints[services.environment];
-		const signedSoap = (services.soapSigner).sign(unsignedSoap, services.certificateData, action, url);
+export class GetAcquirerCommand extends BaseSoapCommand<IGetAcquirerParams, any> {
+	protected readonly action = GET_ACQUIRER_ACTION;
+	protected readonly operationName = 'GetAcquirer';
 
-		const responseXml = await services.soapClient.post(signedSoap, {
-			action: action,
-		});
-
-		const parsedResponse = fastXmlParser.parse(responseXml);
-		return parsedResponse?.['Envelope']?.['Body']?.['GetAcquirerResponse']?.['GetAcquirerResult'];
+	protected createTemplate(): ISoapTemplate {
+		return new GetAcquirerTemplate();
 	}
 }

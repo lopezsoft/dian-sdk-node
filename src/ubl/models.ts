@@ -43,15 +43,15 @@ const BASE_UBL_NS: Record<string, string> = {
 /**
  * Mapa de configuración por tipo de documento.
  * Cada entrada refleja exactamente los namespaces y metadatos de las clases PHP correspondientes:
- * - Invoice      → SignInvoice.php ($ns, groupOfTotals = 'LegalMonetaryTotal')
- * - CreditNote   → SignCreditNote.php (solo cambia xmlns principal)
- * - DebitNote     → SignDebitNote.php (cambia xmlns + groupOfTotals = 'RequestedMonetaryTotal')
+ * - Invoice             → SignInvoice.php ($ns, groupOfTotals = 'LegalMonetaryTotal')
+ * - CreditNote          → SignCreditNote.php (solo cambia xmlns principal)
+ * - DebitNote           → SignDebitNote.php (cambia xmlns + groupOfTotals = 'RequestedMonetaryTotal')
  * - ApplicationResponse → SignEvent.php (cambia xmlns:sts + xmlns principal)
- * - Payroll       → SignPayroll.php (namespaces completamente diferentes)
- * - PayrollAdjustment → SignPayrollAdjustment.php
- * - AttachedDocument → SignAttachedDocument.php
- * - DocumentSupport → SignDocumentSupport.php (xmlns:sts usa URN)
- * - AdjustmentNote → SignAdjustmentNote.php
+ * - Payroll             → SignPayroll.php (namespaces de Nómina Individual)
+ * - PayrollAdjustment   → SignPayrollAdjustment.php (namespaces de Nómina de Ajuste)
+ * - AttachedDocument    → SignAttachedDocument.php (incluye xmlns:ccts, sin xmlns:sts ni xmlns:xsi)
+ * - DocumentSupport     → SignDocumentSupport.php (xmlns:sts usa URN)
+ * - AdjustmentNote      → SignAdjustmentNote.php
  */
 export const DOCUMENT_TYPE_CONFIG: Record<string, IDocumentTypeConfig> = {
   [DocumentType.Invoice]: {
@@ -96,6 +96,11 @@ export const DOCUMENT_TYPE_CONFIG: Record<string, IDocumentTypeConfig> = {
     ns: {
       'xmlns': 'dian:gov:co:facturaelectronica:NominaIndividual',
       'xmlns:xs': 'http://www.w3.org/2001/XMLSchema-instance',
+      'xmlns:ds': 'http://www.w3.org/2000/09/xmldsig#',
+      'xmlns:ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+      'xmlns:xades': 'http://uri.etsi.org/01903/v1.3.2#',
+      'xmlns:xades141': 'http://uri.etsi.org/01903/v1.4.1#',
+      'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
     },
     groupOfTotals: '',
     rootElement: 'NominaIndividual',
@@ -105,6 +110,11 @@ export const DOCUMENT_TYPE_CONFIG: Record<string, IDocumentTypeConfig> = {
     ns: {
       'xmlns': 'urn:dian:gov:co:facturaelectronica:NominaIndividualDeAjuste',
       'xmlns:xs': 'http://www.w3.org/2001/XMLSchema-instance',
+      'xmlns:ds': 'http://www.w3.org/2000/09/xmldsig#',
+      'xmlns:ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+      'xmlns:xades': 'http://uri.etsi.org/01903/v1.3.2#',
+      'xmlns:xades141': 'http://uri.etsi.org/01903/v1.4.1#',
+      'xmlns:xsi': 'http://www.w3.org/2001/XMLSchema-instance',
     },
     groupOfTotals: '',
     rootElement: 'NominaIndividualDeAjuste',
@@ -112,9 +122,14 @@ export const DOCUMENT_TYPE_CONFIG: Record<string, IDocumentTypeConfig> = {
   [DocumentType.AttachedDocument]: {
     type: DocumentType.AttachedDocument,
     ns: {
-      ...BASE_UBL_NS,
-      'xmlns': 'urn:oasis:names:specification:ubl:schema:xsd:AttachedDocument-2',
+      'xmlns:cac': 'urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2',
+      'xmlns:ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2',
+      'xmlns:cbc': 'urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2',
       'xmlns:ccts': 'urn:un:unece:uncefact:data:specification:CoreComponentTypeSchemaModule:2',
+      'xmlns:xades141': 'http://uri.etsi.org/01903/v1.4.1#',
+      'xmlns:xades': 'http://uri.etsi.org/01903/v1.3.2#',
+      'xmlns': 'urn:oasis:names:specification:ubl:schema:xsd:AttachedDocument-2',
+      'xmlns:ds': 'http://www.w3.org/2000/09/xmldsig#',
     },
     groupOfTotals: '',
     rootElement: 'AttachedDocument',
@@ -149,17 +164,28 @@ export const DOCUMENT_TYPE_CONFIG: Record<string, IDocumentTypeConfig> = {
  * ya que comparten elemento raíz y namespaces. Use setDocumentType() explícito.
  */
 export function detectDocumentType(xml: string): DocumentType {
-  if (xml.includes('</AttachedDocument>')) return DocumentType.AttachedDocument;
+  if (xml.includes('</AttachedDocument>') || xml.includes('<AttachedDocument')) {
+    return DocumentType.AttachedDocument;
+  }
   if (xml.includes('NominaIndividualDeAjuste')) return DocumentType.PayrollAdjustment;
   if (xml.includes('NominaIndividual')) return DocumentType.Payroll;
-  if (xml.includes('</ApplicationResponse>')) return DocumentType.ApplicationResponse;
-  if (xml.includes('</CreditNote>')) return DocumentType.CreditNote;
-  if (xml.includes('</DebitNote>')) return DocumentType.DebitNote;
+  if (xml.includes('</ApplicationResponse>') || xml.includes('<ApplicationResponse')) {
+    return DocumentType.ApplicationResponse;
+  }
+  if (xml.includes('</CreditNote>') || xml.includes('<CreditNote')) {
+    return DocumentType.CreditNote;
+  }
+  if (xml.includes('</DebitNote>') || xml.includes('<DebitNote')) {
+    return DocumentType.DebitNote;
+  }
   // DocumentSupport usa xmlns:sts URN en lugar de URL (SignDocumentSupport.php)
-  if (xml.includes('</Invoice>') && xml.includes('urn:dian:gov:co:facturaelectronica:Structures-2-1')) {
+  if (
+    (xml.includes('</Invoice>') || xml.includes('<Invoice')) &&
+    xml.includes('urn:dian:gov:co:facturaelectronica:Structures-2-1')
+  ) {
     return DocumentType.DocumentSupport;
   }
-  if (xml.includes('</Invoice>')) return DocumentType.Invoice;
+  if (xml.includes('</Invoice>') || xml.includes('<Invoice')) return DocumentType.Invoice;
   throw new Error('No se pudo detectar el tipo de documento del XML.');
 }
 

@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as forge from 'node-forge';
-import {ICertificateData} from "../common/interfaces";
+import { ICertificateData } from '../common/interfaces';
 
 export class Certificate {
 	public async loadFromBuffer(p12Buffer: Buffer, password: string): Promise<ICertificateData> {
@@ -12,22 +12,30 @@ export class Certificate {
 			let certificate: forge.pki.Certificate | null = null;
 
 			const certBags = p12.getBags({ bagType: forge.pki.oids.certBag }) as any;
-			const keyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag }) as any;
+			const shroudedKeyBags = p12.getBags({ bagType: forge.pki.oids.pkcs8ShroudedKeyBag }) as any;
+			const plainKeyBags = p12.getBags({ bagType: forge.pki.oids.keyBag }) as any;
 
-			if (!certBags || certBags[forge.pki.oids.certBag].length === 0) {
+			const certList = (certBags?.[forge.pki.oids.certBag] ?? [])
+				.map((bag: any) => bag.cert)
+				.filter(Boolean);
+			const keyList = [
+				...(shroudedKeyBags?.[forge.pki.oids.pkcs8ShroudedKeyBag] ?? []),
+				...(plainKeyBags?.[forge.pki.oids.keyBag] ?? []),
+			]
+				.map((bag: any) => bag.key)
+				.filter(Boolean);
+
+			if (certList.length === 0) {
 				throw new Error('No se pudo encontrar un certificado público en el archivo .p12.');
 			}
-			if (!keyBags || keyBags[forge.pki.oids.pkcs8ShroudedKeyBag].length === 0) {
+			if (keyList.length === 0) {
 				throw new Error('No se pudo encontrar una llave privada en el archivo .p12.');
 			}
 
-			const certs = certBags[forge.pki.oids.certBag].map(bag => bag.cert);
-			const pkeys = keyBags[forge.pki.oids.pkcs8ShroudedKeyBag].map(bag => bag.key);
-
-			for (const cert of certs) {
-				for (const pkey of pkeys) {
-					// Compara los módulos de la clave y el certificado
-					if (cert.publicKey.n.equals((pkey as any).n)) {
+			for (const cert of certList) {
+				for (const pkey of keyList) {
+					// Compara los módulos RSA (n) de la clave privada y el certificado suscriptor
+					if (cert.publicKey?.n && (pkey as any).n && cert.publicKey.n.equals((pkey as any).n)) {
 						privateKey = pkey as forge.pki.PrivateKey;
 						certificate = cert;
 						break;
@@ -53,8 +61,9 @@ export class Certificate {
 				x509CertificateBase64,
 			};
 		} catch (error) {
-			const errorMessage = (error instanceof Error) ? error.message : String(error);
-			if (errorMessage.includes('mac check failed')) {
+			const errorMessage = error instanceof Error ? error.message : String(error);
+			const lowerMessage = errorMessage.toLowerCase();
+			if (lowerMessage.includes('mac') || lowerMessage.includes('invalid password')) {
 				throw new Error(`La contraseña del certificado es incorrecta. Error original: ${errorMessage}`);
 			}
 			throw new Error(`Error crítico al procesar el certificado: ${errorMessage}`);

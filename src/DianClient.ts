@@ -3,18 +3,23 @@ import { SoapClient } from './http/SoapClient';
 import { SoapSigner } from './security/SoapSigner';
 import { XmlSigner } from './security/XmlSigner';
 import { PayrollSigner } from './security/PayrollSigner';
+import { AttachedDocumentSigner } from './security/AttachedDocumentSigner';
+import { DocumentSupportSigner } from './security/DocumentSupportSigner';
+import { AdjustmentNoteSigner } from './security/AdjustmentNoteSigner';
+import { XmlSignerFactory } from './security/XmlSignerFactory';
 import {
 	ICertificateData,
 	ICommand,
 	ICommandServices,
 	IDianClientInitializeOptions,
 	IDianClientOptions,
-	ISigner
+	ISigner,
 } from './common/interfaces';
 
 /**
  * FACADE: Punto de entrada principal a la librería.
- * Proporciona una interfaz simple para un subsistema complejo (firma, SOAP, etc.).
+ * Proporciona una interfaz simple para un subsistema complejo (firma XAdES-EPES, WS-Security SOAP, etc.)
+ * y soporta Inyección de Dependencias (DIP) a través de `IDianClientOptions`.
  */
 export class DianClient {
 	private readonly services: ICommandServices;
@@ -22,23 +27,29 @@ export class DianClient {
 
 	constructor(public options: IDianClientOptions) {
 		this.services = {
-			soapClient: new SoapClient(options.environment),
-			soapSigner: new SoapSigner() as ISigner,
-			xmlSigner: new XmlSigner() as ISigner,
-			payrollSigner: new PayrollSigner() as ISigner,
+			soapClient: options.soapClient ?? new SoapClient(options.environment),
+			soapSigner: options.soapSigner ?? (new SoapSigner() as ISigner),
+			xmlSigner: options.xmlSigner ?? (new XmlSigner() as ISigner),
+			payrollSigner: options.payrollSigner ?? (new PayrollSigner() as ISigner),
+			attachedDocumentSigner: options.attachedDocumentSigner ?? (new AttachedDocumentSigner() as ISigner),
+			documentSupportSigner: options.documentSupportSigner ?? (new DocumentSupportSigner() as ISigner),
+			adjustmentNoteSigner: options.adjustmentNoteSigner ?? (new AdjustmentNoteSigner() as ISigner),
+			signerFactory: options.signerFactory ?? new XmlSignerFactory(),
 			certificateData: {} as ICertificateData,
-			environment: options.environment
+			environment: options.environment,
 		};
 	}
 
 	/**
-	 * Carga el certificado digital y prepara el cliente para su uso.
+	 * Carga el certificado digital PKCS#12 y prepara el cliente para su uso.
+	 * Acepta tanto `password` como `passwordPsswrd` por compatibilidad hacia atrás.
 	 */
 	public async initialize(options: IDianClientInitializeOptions): Promise<void> {
+		const password = options.password ?? options.passwordPsswrd ?? '';
 		const certificateHandler = new Certificate();
 		this.services.certificateData = await certificateHandler.loadFromBuffer(
 			options.certificate,
-			options.passwordPsswrd
+			password,
 		);
 		this.isInitialized = true;
 	}
@@ -51,7 +62,7 @@ export class DianClient {
 	 */
 	public async execute<TParams, TResult>(
 		command: ICommand<TParams, TResult>,
-		params: TParams
+		params: TParams,
 	): Promise<TResult> {
 		if (!this.isInitialized) {
 			throw new Error('El cliente no ha sido inicializado. Llama a initialize() primero.');

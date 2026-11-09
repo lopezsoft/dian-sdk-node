@@ -1,26 +1,42 @@
-import { ICommand, ICommandServices, ISendNominaSyncParams } from '../common/interfaces';
+import {
+	ICommandServices,
+	ISendNominaSyncParams,
+	ISoapTemplate,
+	ITemplateParams,
+} from '../common/interfaces';
 import { SendNominaSyncTemplate } from '../soap/templates/SendNominaSyncTemplate';
-import { fastXmlParser } from '../common/utils';
-import { DianEndpoints } from '../config/dianEndpoints';
 import { SEND_NOMINA_SYNC_ACTION } from '../common/constants';
+import { BaseSoapCommand } from './BaseSoapCommand';
 
 /**
  * Comando para ejecutar la operación SendNominaSync de la DIAN.
+ * Soporta tanto la firma al vuelo de `unsignedPayrollXml` con `payrollSigner`
+ * como el envío directo de `contentFile` (base64).
  */
-export class SendNominaSyncCommand implements ICommand<ISendNominaSyncParams, any> {
-	public async execute(services: ICommandServices, params: ISendNominaSyncParams): Promise<any> {
-		const action = SEND_NOMINA_SYNC_ACTION;
-		const url = DianEndpoints[services.environment];
-		const signedPayrollXml = services.payrollSigner.sign(params.unsignedPayrollXml, services.certificateData, action, url);
-		const contentFileBase64 = Buffer.from(signedPayrollXml).toString('base64');
+export class SendNominaSyncCommand extends BaseSoapCommand<ISendNominaSyncParams, any> {
+	protected readonly action = SEND_NOMINA_SYNC_ACTION;
+	protected readonly operationName = 'SendNominaSync';
 
-		const template = new SendNominaSyncTemplate();
-		const unsignedSoap = template.getXml({ contentFile: contentFileBase64 });
-		const signedSoap = services.soapSigner.sign(unsignedSoap, services.certificateData, action, url);
+	protected createTemplate(): ISoapTemplate {
+		return new SendNominaSyncTemplate();
+	}
 
-		const responseXml = await services.soapClient.post(signedSoap, { action });
+	protected override buildTemplateParams(
+		services: ICommandServices,
+		params: ISendNominaSyncParams,
+		endpointUrl: string,
+	): ITemplateParams {
+		const contentFile = this.resolveDocumentContentBase64({
+			contentFile: params.contentFile,
+			unsignedXml: params.unsignedPayrollXml,
+			signingOptions: params.signingOptions,
+			signer: services.payrollSigner,
+			services,
+			endpointUrl,
+		});
 
-		const parsedResponse = fastXmlParser.parse(responseXml);
-		return parsedResponse?.['Envelope']?.['Body']?.['SendNominaSyncResponse']?.['SendNominaSyncResult'];
+		return {
+			contentFile,
+		};
 	}
 }

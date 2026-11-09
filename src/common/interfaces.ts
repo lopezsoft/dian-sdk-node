@@ -1,8 +1,66 @@
+import type { DocumentType, IDocumentTypeConfig } from '../ubl/models';
+import type { ISignatureAlgorithm } from '../security/BaseXmlSigner';
+
 /**
- * Define el contrato para una clase que firma un documento.
+ * Opciones opcionales de pre-procesamiento UBL y configuración de firma XAdES-EPES.
+ * Permite inyectar automáticamente `SoftwareSecurityCode`, `CUFE`/`CUDE`/`CUDS`/`CUNE`
+ * y `QRCode` antes de aplicar la firma digital.
+ */
+export interface IXmlSignOptions {
+	softwareID?: string;
+	pin?: string;
+	technicalKey?: string;
+	documentType?: DocumentType;
+	algorithm?: ISignatureAlgorithm;
+}
+
+/**
+ * Define el contrato base para una clase que firma un documento (SOAP o XML UBL).
+ * Mantiene compatibilidad hacia atrás con versiones previas del SDK.
  */
 export interface ISigner {
-	sign(unsignedSoap: string | any, certificateData: ICertificateData, action: string, toValue: string): string;
+	sign(
+		unsignedDocument: string | any,
+		certificateData: ICertificateData,
+		action?: string,
+		toValue?: string,
+	): string;
+}
+
+/**
+ * Contrato segregado (ISP) para el firmante WS-Security SOAP 1.2.
+ */
+export interface ISoapSigner extends ISigner {
+	sign(
+		unsignedSoap: string | any,
+		certificateData: ICertificateData,
+		action: string,
+		toValue: string,
+	): string;
+}
+
+/**
+ * Contrato segregado (ISP) para firmantes de documentos XML UBL / Nómina bajo XAdES-EPES.
+ */
+export interface IXmlSigner extends ISigner {
+	sign(
+		unsignedXml: string | any,
+		certificateData: ICertificateData,
+		action?: string,
+		toValue?: string,
+		options?: IXmlSignOptions,
+	): string;
+	setAlgorithm?(algorithm: ISignatureAlgorithm): void;
+	setSigningOptions?(options: IXmlSignOptions): void;
+	getDocumentConfig?(): IDocumentTypeConfig | undefined;
+}
+
+/**
+ * Contrato para la fábrica de firmantes XML (Patrón Factory).
+ */
+export interface IXmlSignerFactory {
+	createForXml(xml: string, explicitType?: DocumentType): IXmlSigner;
+	createForDocumentType(type: DocumentType): IXmlSigner;
 }
 
 /**
@@ -27,10 +85,18 @@ export interface ISoapTemplate {
 }
 
 /**
- * Opciones de configuración para el cliente DIAN.
+ * Opciones de configuración e inyección de dependencias (DIP) para el cliente DIAN.
  */
 export interface IDianClientOptions {
 	environment: number; // 1 para PRODUCCION, 2 para HABILITACION
+	soapClient?: IHttpClient;
+	soapSigner?: ISigner;
+	xmlSigner?: ISigner;
+	payrollSigner?: ISigner;
+	attachedDocumentSigner?: ISigner;
+	documentSupportSigner?: ISigner;
+	adjustmentNoteSigner?: ISigner;
+	signerFactory?: IXmlSignerFactory;
 }
 
 /**
@@ -43,10 +109,14 @@ export interface ICommandServices {
 	payrollSigner: ISigner;
 	certificateData: ICertificateData;
 	environment: number;
+	attachedDocumentSigner?: ISigner;
+	documentSupportSigner?: ISigner;
+	adjustmentNoteSigner?: ISigner;
+	signerFactory?: IXmlSignerFactory;
 }
 
 /**
- * Define el contrato para un Comando.
+ * Define el contrato para un Comando (Patrón Command).
  */
 export interface ICommand<TParams, TResult> {
 	execute(services: ICommandServices, params: TParams): Promise<TResult>;
@@ -61,29 +131,54 @@ export interface ICertificateData {
 	x509CertificateBase64: string;
 }
 
+/**
+ * Opciones para inicializar el certificado digital en DianClient.
+ * Soporta tanto `password` como `passwordPsswrd` por compatibilidad hacia atrás.
+ */
 export interface IDianClientInitializeOptions {
 	certificate: Buffer;
-	passwordPsswrd: string;
+	passwordPsswrd?: string;
+	password?: string;
 }
 
 // --- Parámetros de Comandos ---
 
 export interface ISendBillSyncParams {
 	fileName: string;
-	unsignedUblXml: string;
+	/** XML UBL sin firmar (flujo de firma al vuelo). */
+	unsignedUblXml?: string;
+	/** Archivo XML firmado o ZIP ya codificado en base64 (flujo pre-firmado). */
+	contentFile?: string;
+	/** Opciones opcionales para inyección previa de CUFE/CUDE/CUDS y SoftwareSecurityCode. */
+	signingOptions?: IXmlSignOptions;
 }
 
 export interface ISendBillAsyncParams {
 	fileName: string;
-	unsignedUblXml: string;
+	/** XML UBL sin firmar (flujo de firma al vuelo). */
+	unsignedUblXml?: string;
+	/** Archivo XML firmado o ZIP ya codificado en base64 (flujo pre-firmado). */
+	contentFile?: string;
+	/** Opciones opcionales para inyección previa de CUFE/CUDE/CUDS y SoftwareSecurityCode. */
+	signingOptions?: IXmlSignOptions;
 }
 
 export interface ISendEventParams {
-	unsignedEventXml: string;
+	/** XML ApplicationResponse sin firmar (flujo de firma al vuelo). */
+	unsignedEventXml?: string;
+	/** Archivo XML firmado o ZIP ya codificado en base64 (flujo pre-firmado). */
+	contentFile?: string;
+	/** Opciones opcionales para inyección previa de CUDE-Event y SoftwareSecurityCode. */
+	signingOptions?: IXmlSignOptions;
 }
 
 export interface ISendNominaSyncParams {
-	unsignedPayrollXml: string;
+	/** XML de Nómina Individual o de Ajuste sin firmar (flujo de firma al vuelo). */
+	unsignedPayrollXml?: string;
+	/** Archivo XML firmado o ZIP ya codificado en base64 (flujo pre-firmado). */
+	contentFile?: string;
+	/** Opciones opcionales para inyección previa de CUNE y SoftwareSC. */
+	signingOptions?: IXmlSignOptions;
 }
 
 export interface ISendTestSetAsyncParams extends ITemplateParams {
@@ -94,7 +189,12 @@ export interface ISendTestSetAsyncParams extends ITemplateParams {
 
 export interface ISendBillAttachmentAsyncParams {
 	fileName: string;
-	unsignedAttachedDocumentXml: string;
+	/** XML AttachedDocument sin firmar (flujo de firma al vuelo). */
+	unsignedAttachedDocumentXml?: string;
+	/** Archivo XML firmado o ZIP ya codificado en base64 (flujo pre-firmado). */
+	contentFile?: string;
+	/** Opciones opcionales para configuración de firma. */
+	signingOptions?: IXmlSignOptions;
 }
 
 export interface IGetStatusCommandParams {

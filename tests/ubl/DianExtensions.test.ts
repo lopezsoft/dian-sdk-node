@@ -1214,3 +1214,140 @@ describe('BaseXmlSigner — Multi-algorithm', () => {
     }
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// Paridad ubl21dian v3.6.9 — hexToDecimal, truncateDecimals, QR DS, Nómina Eliminación
+// ---------------------------------------------------------------------------
+
+describe('DianExtensions — hexToDecimal (ubl21dian v3.6.9)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { hexToDecimal } = require('../../src/ubl/DianExtensions');
+
+  it('debería convertir valores hexadecimales pequeños correctamente', () => {
+    expect(hexToDecimal('0')).toBe('0');
+    expect(hexToDecimal('1')).toBe('1');
+    expect(hexToDecimal('a')).toBe('10');
+    expect(hexToDecimal('ff')).toBe('255');
+    expect(hexToDecimal('0100')).toBe('256');
+  });
+
+  it('debería convertir seriales de 8 bytes (64 bits) de CAs tradicionales', () => {
+    expect(hexToDecimal('7fffffffffffffff')).toBe('9223372036854775807');
+  });
+
+  it('debería convertir seriales de 16 bytes (128 bits) de FIMA Digital / Viafirma sin overflow', () => {
+    const result = hexToDecimal('78a5d8e5c5f9b4a02145b789a0c3d4e5');
+    expect(result).toMatch(/^\d+$/);
+    expect(result).toBe('160368487680842178278241774367135749349');
+  });
+
+  it('debería convertir seriales de 20 bytes (160 bits, máximo RFC 5280)', () => {
+    const result = hexToDecimal('7fffffffffffffffffffffffffffffffffffffff');
+    expect(result).toBe('730750818665451459101842416358141509827966271487');
+  });
+
+  it('debería manejar prefijo 0x y mayúsculas/minúsculas de forma idéntica', () => {
+    expect(hexToDecimal('0xFF')).toBe('255');
+    expect(hexToDecimal('0X1A')).toBe('26');
+    expect(hexToDecimal('abcdef0123456789')).toBe(hexToDecimal('ABCDEF0123456789'));
+  });
+
+  it('debería lanzar excepción si la cadena hexadecimal es inválida o vacía', () => {
+    expect(() => hexToDecimal('')).toThrow();
+    expect(() => hexToDecimal('   ')).toThrow();
+    expect(() => hexToDecimal('xyz123')).toThrow();
+  });
+});
+
+describe('DianExtensions — Paridad FAD06 (truncateDecimals en CUFE/CUDE/CUDS y TaxTotal raíz)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getQRDataDocumentSupport, applyPreSignUblExtensions } = require('../../src/ubl/DianExtensions');
+
+  it('debería truncar LineExtensionAmount, TaxAmount y PayableAmount a 2 decimales en calculateCufe', () => {
+    const xml4Decimals = INVOICE_XML
+      .replace('<cbc:LineExtensionAmount currencyID="COP">10000.00</cbc:LineExtensionAmount>', '<cbc:LineExtensionAmount currencyID="COP">10000.0099</cbc:LineExtensionAmount>')
+      .replace('<cbc:TaxAmount currencyID="COP">1900.00</cbc:TaxAmount>', '<cbc:TaxAmount currencyID="COP">1900.0088</cbc:TaxAmount>')
+      .replace('<cbc:PayableAmount currencyID="COP">11900.00</cbc:PayableAmount>', '<cbc:PayableAmount currencyID="COP">11900.0077</cbc:PayableAmount>');
+
+    const doc2 = new DOMParser().parseFromString(INVOICE_XML, 'text/xml');
+    const doc4 = new DOMParser().parseFromString(xml4Decimals, 'text/xml');
+
+    expect(calculateCufe(doc4, 'fc8eac422eba16e22ffd8c6f94b3f40a6e38162c'))
+      .toBe(calculateCufe(doc2, 'fc8eac422eba16e22ffd8c6f94b3f40a6e38162c'));
+  });
+
+  it('debería ignorar cac:TaxTotal dentro de cac:InvoiceLine al calcular impuestos globales', () => {
+    const xmlWithLineTax = INVOICE_XML.replace(
+      '</Invoice>',
+      `  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cac:TaxTotal>
+      <cbc:TaxAmount currencyID="COP">99999.00</cbc:TaxAmount>
+      <cac:TaxSubtotal>
+        <cac:TaxCategory>
+          <cac:TaxScheme><cbc:ID>04</cbc:ID></cac:TaxScheme>
+        </cac:TaxCategory>
+      </cac:TaxSubtotal>
+    </cac:TaxTotal>
+  </cac:InvoiceLine>
+</Invoice>`,
+    );
+
+    const docBase = new DOMParser().parseFromString(INVOICE_XML, 'text/xml');
+    const docWithLineTax = new DOMParser().parseFromString(xmlWithLineTax, 'text/xml');
+
+    expect(calculateCufe(docWithLineTax, 'KEY1')).toBe(calculateCufe(docBase, 'KEY1'));
+  });
+
+  it('debería soportar Nómina de Ajuste de Eliminación sin DevengadosTotal/DeduccionesTotal/ComprobanteTotal (v3.5.1)', () => {
+    const eliminationPayrollXml = `<?xml version="1.0" encoding="UTF-8"?>
+<NominaIndividualDeAjuste xmlns="dian:gov:co:facturaelectronica:NominaIndividualDeAjuste">
+  <InformacionGeneral FechaGen="2024-01-15" HoraGen="10:30:00-05:00" TipoXML="103" Ambiente="2" CUNE=""/>
+  <TipoNota>2</TipoNota>
+  <Eliminar>
+    <EliminandoPredecesor NumeroPred="N001" CUNEPred="ABC" FechaGenPred="2024-01-01"/>
+    <NumeroSecuenciaXML Numero="NE001" Consecutivo="1"/>
+    <ProveedorXML SoftwareSC=""/>
+    <CodigoQR></CodigoQR>
+    <Empleador NIT="900373115"/>
+  </Eliminar>
+</NominaIndividualDeAjuste>`;
+
+    const doc = new DOMParser().parseFromString(eliminationPayrollXml, 'text/xml');
+    const cune = injectCune(doc, '12345');
+    expect(cune).toHaveLength(96);
+
+    const qr = getQRDataPayroll(doc);
+    expect(qr).toContain('ValDev: 0.00');
+    expect(qr).toContain('ValDed: 0.00');
+    expect(qr).toContain('ValTol: 0.00');
+    expect(qr).toContain('DocEmp: 0');
+  });
+
+  it('getQRDataDocumentSupport debería generar el formato QR de Documento Soporte (v3.6.1)', () => {
+    const doc = new DOMParser().parseFromString(DOCUMENT_SUPPORT_XML, 'text/xml');
+    injectUuid(doc, { pin: '12345', documentType: DocumentType.DocumentSupport });
+    const qrData = getQRDataDocumentSupport(doc);
+
+    expect(qrData).toContain('NumDS: DS990000001');
+    expect(qrData).toContain('FecFD: 2024-06-15');
+    expect(qrData).toContain('HorDS: 08:30:00-05:00');
+    expect(qrData).toContain('NumSNO: 900373115');
+    expect(qrData).toContain('DocABS: 800199436');
+    expect(qrData).toContain('ValDS: 5000.00');
+    expect(qrData).toContain('ValIva: 950.00');
+    expect(qrData).toContain('ValTolDS: 5950.00');
+    expect(qrData).toContain('CUDS:');
+  });
+
+  it('applyPreSignUblExtensions debería inyectar SoftwareSecurityCode y CUFE cuando se pasan opciones', () => {
+    const processed = applyPreSignUblExtensions(INVOICE_XML, {
+      softwareID: 'SW-001',
+      pin: '12345',
+      technicalKey: 'TECH-KEY-001',
+    });
+    expect(processed).not.toContain('<sts:SoftwareSecurityCode>PLACEHOLDER</sts:SoftwareSecurityCode>');
+    expect(processed).not.toContain('<cbc:UUID schemeID="2" schemeName="CUFE-SHA384">PLACEHOLDER</cbc:UUID>');
+  });
+});
