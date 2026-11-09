@@ -5,6 +5,17 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [2.2.2] - 2026-11-08
+
+### Added
+- **Pipeline CD de Publicación Open Source (`.github/workflows/release.yml`)**:
+  - Creación automática de **GitHub Releases** oficiales al publicar tags SemVer (`v*.*.*`).
+  - Publicación automatizada en el registro público de **NPM** (`npmjs.com`) con atestación criptográfica de origen (`--provenance --access public`) cuando está configurado el secret `NPM_TOKEN`.
+- **Endurecimiento de CI y Empaquetado (`package.json` y `.github/workflows/ci.yml`)**:
+  - Lista blanca de distribución `"files": ["dist", "LICENSE", "README.md", "CHANGELOG.md", "SECURITY.md"]` en `package.json` para excluir código fuente sin compilar y suites de prueba del paquete publicado.
+  - Hook `"prepublishOnly": "npm run build && npm test"` y metadatos `repository`, `homepage`, `bugs` y `engines` (`node >= 20.0.0`) requeridos por NPM Provenance.
+  - Pasos de auditoría de seguridad (`npm audit --audit-level=high`) y validación de tarball (`npm pack --dry-run`) en el pipeline de CI.
+
 ## [2.2.1] - 2026-11-08
 
 ### Added

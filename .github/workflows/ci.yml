@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   validate:
-    name: Validar Compilación y Suite de Tests (Node ${{ matrix.node-version }})
+    name: Validar Compilación, Seguridad y Tests (Node ${{ matrix.node-version }})
     runs-on: ubuntu-latest
 
     strategy:
@@ -35,8 +35,14 @@ jobs:
       - name: Instalar dependencias bloqueadas
         run: npm ci
 
+      - name: Auditoría de seguridad de dependencias
+        run: npm audit --audit-level=high
+
       - name: Verificar compilación TypeScript
         run: npm run build
 
       - name: Ejecutar suite completa de pruebas unitarias y E2E
         run: npm test
+
+      - name: Validar artefacto de empaquetado NPM (dry-run)
+        run: npm pack --dry-run

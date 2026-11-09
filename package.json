@@ -1,6 +1,6 @@
 {
   "name": "dian-sdk-node",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Librería para la firma de documentos electrónicos y comunicación con la DIAN en Node.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -8,10 +8,30 @@
     ".": "./dist/index.js",
     "./commands": "./dist/commands/index.js"
   },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "SECURITY.md"
+  ],
   "scripts": {
-    "build": "tsc",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\"",
+    "build": "npm run clean && tsc",
     "test": "jest",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lopezsoft/dian-sdk-node.git"
+  },
+  "homepage": "https://github.com/lopezsoft/dian-sdk-node#readme",
+  "bugs": {
+    "url": "https://github.com/lopezsoft/dian-sdk-node/issues"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "keywords": [
     "dian",
