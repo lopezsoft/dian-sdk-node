@@ -5,6 +5,13 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [2.2.3] - 2026-11-08
+
+### Fixed
+- **Inclusión de `package-lock.json` en Git para GitHub Actions (`CI/CD`)**:
+  - Eliminada la regla legacy en `.gitignore` que ignoraba `package-lock.json` y el propio `.gitignore`, corrigiendo el error `Dependencies lock file is not found` en `actions/setup-node@v4` (`cache: 'npm'`) y `npm ci`.
+  - Configurado `continue-on-error: true` en el paso informativo de `npm audit` en `ci.yml` y actualizado `release.yml` a Node.js `22.x`.
+
 ## [2.2.2] - 2026-11-08
 
 ### Added

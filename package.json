@@ -1,6 +1,6 @@
 {
   "name": "dian-sdk-node",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "Librería para la firma de documentos electrónicos y comunicación con la DIAN en Node.js",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

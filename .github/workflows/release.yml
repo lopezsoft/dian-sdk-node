@@ -21,10 +21,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configurar Node.js 20.x y Registro NPM
+      - name: Configurar Node.js 22.x y Registro NPM
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
