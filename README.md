@@ -1,6 +1,7 @@
 # DIAN SDK Node
 
-[![Versión](https://img.shields.io/badge/versi%C3%B3n-2.2.0-1d4ed8)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versi%C3%B3n-2.2.1-1d4ed8)](CHANGELOG.md)
+[![Licencia: AGPL v3](https://img.shields.io/badge/Licencia-AGPL_v3-blue.svg)](LICENSE)
 [![NPM](https://img.shields.io/badge/npm-dian--sdk--node-cb3837)](https://www.npmjs.com/package/dian-sdk-node)
 
 SDK desacoplado en **Node.js y TypeScript** diseñado para la firma electrónica **XAdES-EPES** de documentos UBL 2.1 / Nómina Electrónica y la comunicación **SOAP 1.2 (WS-Security)** con los servicios web de la **DIAN** en Colombia.
@@ -118,6 +119,25 @@ const signedXml = signer.sign(unsignedXml, certData, undefined, undefined, {
 
 ---
 
-## 📄 Licencia
+## 🌿 Flujo de Trabajo y Protección de Ramas
 
-Este proyecto está distribuido bajo licencia de código abierto. Consulta el archivo [`LICENSE`](LICENSE) para más detalles.
+El repositorio sigue un esquema de ramas protegidas con validación continua en GitHub Actions ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) y revisión de propietarios ([`.github/CODEOWNERS`](.github/CODEOWNERS)):
+
+- **`main`**: Rama estable de producción. Solo recibe fusiones verificadas desde `dev` correspondientes a versiones etiquetadas (`vX.Y.Z`).
+- **`dev`**: Rama activa de desarrollo e integración continua. Todo *Pull Request* debe apuntar a `dev` y superar `npm run build` y `npm test`.
+
+Consulta [`CONTRIBUTING.md`](CONTRIBUTING.md) para conocer las reglas de arquitectura SOLID y [`SECURITY.md`](SECURITY.md) para la política de seguridad y reporte privado de vulnerabilidades.
+
+---
+
+## 📄 Licencia y Derechos de Autor
+
+Copyright © 2026 **LopezSoft SAS** ([https://lopezsoft.net.co](https://lopezsoft.net.co)) — Todos los derechos reservados.  
+Autor principal: **Lewis Lopez Gomez** (`gerencia@lopezsoft.net.co` / `contact@lewislopez.io`).
+
+Este proyecto se distribuye bajo los términos de la licencia **GNU Affero General Public License v3.0 (`AGPL-3.0-or-later`)**:
+
+- Si utilizas, modificas o despliegas esta librería como parte de una aplicación, API, SaaS o servicio accesible a través de una red, el código fuente completo del sistema derivado o integrado debe ponerse a disposición de los usuarios bajo los términos de la licencia **GNU AGPLv3**.
+- **Licenciamiento Comercial / Empresarial**: Si tu organización requiere integrar **DIAN SDK Node** en software propietario de código cerrado o plataformas SaaS privadas sin las obligaciones de reciprocidad (*copyleft*) de AGPLv3, contáctanos en [gerencia@lopezsoft.net.co](mailto:gerencia@lopezsoft.net.co) para adquirir una licencia comercial.
+
+Consulta el texto completo en el archivo [`LICENSE`](LICENSE).

@@ -1,0 +1,7 @@
+# Propietarios del código y revisores obligatorios para ramas protegidas (main / dev)
+* @lopezsoft
+/src/security/ @lopezsoft
+/src/ubl/ @lopezsoft
+/.github/ @lopezsoft
+/LICENSE @lopezsoft
+/SECURITY.md @lopezsoft

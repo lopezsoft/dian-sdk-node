@@ -5,6 +5,22 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [2.2.1] - 2026-11-08
+
+### Added
+- **Protección del Proyecto y Gobernanza**:
+  - `SECURITY.md` — Política de seguridad criptográfica (procesamiento en memoria sin escritura de llaves privadas ni XML firmados en disco) y canales de reporte privado de vulnerabilidades de **LopezSoft SAS**.
+  - `CONTRIBUTING.md` — Guía oficial de contribución, reglas de arquitectura SOLID, convenciones de código y flujo de ramas (`dev` → `main`).
+  - `.github/CODEOWNERS` — Definición de propietarios y revisores obligatorios (`@lopezsoft`) para áreas críticas (`src/security/`, `src/ubl/`, `LICENSE`, `SECURITY.md`).
+  - `.github/workflows/ci.yml` — Pipeline de Integración Continua en GitHub Actions para validar compilación (`npm run build`) y pruebas (`npm test`) en Node.js 20.x y 22.x sobre `main` y `dev`.
+  - Creación de la rama de integración `dev` separada de la rama estable `main`.
+
+### Changed
+- **Licenciamiento GNU AGPLv3 (`AGPL-3.0-or-later`)**:
+  - Actualizado `LICENSE` con el texto íntegro oficial de la **GNU Affero General Public License v3.0** bajo titularidad de **LopezSoft SAS** (`Lewis Lopez Gomez`).
+  - Actualizado el campo `"license"` en `package.json` a `"AGPL-3.0-or-later"`.
+  - Documentado el modelo de licenciamiento dual (Open Source AGPLv3 + Licencia Comercial Empresarial de LopezSoft SAS) y el flujo de ramas en `README.md`.
+
 ## [2.2.0] - 2026-11-08
 
 ### Added
