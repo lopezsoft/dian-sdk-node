@@ -2,6 +2,8 @@ name: CD — Release & Publish Package
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*.*.*'
   workflow_dispatch:
@@ -28,19 +30,43 @@ jobs:
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Detectar versión desde package.json y extraer notas de CHANGELOG.md
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+          # Extraer la sección correspondiente a la versión actual desde CHANGELOG.md
+          node -e '
+            const fs = require("fs");
+            const version = process.argv[1];
+            const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
+            const escaped = version.replace(/\./g, "\\.");
+            const regex = new RegExp(`## \\[${escaped}\\][^\\n]*\\n([\\s\\S]*?)(?=\\n## \\[|$)`);
+            const match = changelog.match(regex);
+            const notes = match && match[1] ? match[1].trim() : `Release v${version}`;
+            fs.writeFileSync("RELEASE_NOTES.md", notes, "utf8");
+          ' "$VERSION"
+
       - name: Instalar dependencias bloqueadas
         run: npm ci
 
-      - name: Compilar y ejecutar suite de pruebas
+      - name: Compilar, ejecutar pruebas y empaquetar tarball (.tgz)
         run: |
           npm run build
           npm test
+          npm pack
 
-      - name: Crear GitHub Release oficial
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Publicar o actualizar GitHub Release oficial con notas de CHANGELOG y artefacto .tgz
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: DIAN SDK Node ${{ steps.meta.outputs.tag }}
+          body_path: RELEASE_NOTES.md
           generate_release_notes: true
+          files: dian-sdk-node-${{ steps.meta.outputs.version }}.tgz
 
       - name: Publicar paquete en NPM Registry (con Provenance)
         env:
@@ -50,4 +76,4 @@ jobs:
             echo "::notice title=NPM_TOKEN no configurado::Se omite la publicación automática en npmjs.com. Configura el secret NPM_TOKEN en el repositorio de GitHub para habilitarla."
             exit 0
           fi
-          npm publish --provenance --access public
+          npm publish --provenance --access public || echo "::warning title=Versión ya existente en NPM::La versión ${{ steps.meta.outputs.version }} ya fue publicada previamente."

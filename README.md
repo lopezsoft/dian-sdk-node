@@ -1,6 +1,6 @@
 # DIAN SDK Node
 
-[![Versión](https://img.shields.io/badge/versi%C3%B3n-2.2.3-1d4ed8)](CHANGELOG.md)
+[![Versión](https://img.shields.io/badge/versi%C3%B3n-2.2.4-1d4ed8)](CHANGELOG.md)
 [![CI](https://github.com/lopezsoft/dian-sdk-node/actions/workflows/ci.yml/badge.svg)](https://github.com/lopezsoft/dian-sdk-node/actions/workflows/ci.yml)
 [![Release](https://github.com/lopezsoft/dian-sdk-node/actions/workflows/release.yml/badge.svg)](https://github.com/lopezsoft/dian-sdk-node/actions/workflows/release.yml)
 [![Licencia: AGPL v3](https://img.shields.io/badge/Licencia-AGPL_v3-blue.svg)](LICENSE)

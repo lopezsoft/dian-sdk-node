@@ -5,6 +5,18 @@ Todos los cambios notables en este proyecto serán documentados en este archivo.
 El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.0.0/),
 y este proyecto adhiere a [Semantic Versioning](https://semver.org/lang/es/).
 
+## [2.2.4] - 2026-11-08
+
+### Added
+- **Automatización Completa de Releases desde `main` (`.github/workflows/release.yml`)**:
+  - Generación automática del tag y **GitHub Release** (`DIAN SDK Node vX.Y.Z`) al fusionar o hacer push de una nueva versión en `main` (además de soportar disparo por tags `v*.*.*` y `workflow_dispatch`).
+  - Extracción automática de las notas de versión en español desde `CHANGELOG.md` para el cuerpo del Release en GitHub.
+  - Empaquetado y adjunto automático del artefacto distribuible compilado (`dian-sdk-node-X.Y.Z.tgz`) en cada Release de GitHub.
+- **Resumen de la Serie `2.2.x` (Paridad `ubl21dian` v3.6.9 + Arquitectura SOLID + AGPLv3)**:
+  - Firma **XAdES-EPES** en una sola pasada con las 3 referencias obligatorias (`Documento Raíz`, `KeyInfo` y `SignedProperties`), canonicalización C14N con propagación de namespaces UBL, `CertDigest` sobre certificado X.509 DER completo y `SignerRole` (`supplier`).
+  - Soporte de seriales X.509 de 16–20+ bytes (`hexToDecimal` con `BigInt`), zona horaria Colombia (`-05:00`) y prevención de rechazo DIAN `FAD06` (`truncateDecimals` y filtrado raíz de `<cac:TaxTotal>`).
+  - Licenciamiento **GNU AGPLv3 (`AGPL-3.0-or-later`)**, políticas [`SECURITY.md`](SECURITY.md), [`CONTRIBUTING.md`](CONTRIBUTING.md), [`.github/CODEOWNERS`](.github/CODEOWNERS) y validación CI en Node.js `20.x` y `22.x`.
+
 ## [2.2.3] - 2026-11-08
 
 ### Fixed
